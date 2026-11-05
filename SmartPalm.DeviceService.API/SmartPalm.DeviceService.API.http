@@ -1,0 +1,8 @@
+@host = http://localhost:5103
+
+GET {{host}}/health/ready
+Accept: application/json
+
+###
+GET {{host}}/api/v1/edge-gateways/AA:BB:CC:DD:EE:01/connectivity
+Accept: application/json

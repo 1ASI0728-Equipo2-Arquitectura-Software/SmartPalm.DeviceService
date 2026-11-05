@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="SmartPalm.DeviceService.API/SmartPalm.DeviceService.API.csproj" />
+  <Project Path="SmartPalm.DeviceService.API.Tests/SmartPalm.DeviceService.API.Tests.csproj" />
+</Solution>

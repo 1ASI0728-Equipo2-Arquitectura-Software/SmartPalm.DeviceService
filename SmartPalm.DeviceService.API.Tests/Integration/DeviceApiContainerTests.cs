@@ -1,0 +1,134 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Security.Claims;
+using System.Text;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.IdentityModel.Tokens;
+using Npgsql;
+using Testcontainers.PostgreSql;
+using Testcontainers.RabbitMq;
+
+namespace SmartPalm.DeviceService.API.Tests.Integration;
+
+public class DeviceApiContainerTests : IAsyncLifetime
+{
+    private const string JwtKey = "device-tests-signing-key-with-at-least-32-characters";
+    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:17-alpine")
+        .WithDatabase("smartpalm_device")
+        .WithUsername("smartpalm_device")
+        .WithPassword("device-tests")
+        .Build();
+    private readonly RabbitMqContainer _rabbitMq = new RabbitMqBuilder("rabbitmq:4-management-alpine").Build();
+
+    public async Task InitializeAsync() =>
+        await Task.WhenAll(_postgres.StartAsync(), _rabbitMq.StartAsync());
+
+    public async Task DisposeAsync() =>
+        await Task.WhenAll(_postgres.DisposeAsync().AsTask(), _rabbitMq.DisposeAsync().AsTask());
+
+    [DockerRequiredFact]
+    [Trait("Category", "Integration")]
+    public async Task RegisterGatewayAndDevice_PersistsStateAndPublishesOutboxMessages()
+    {
+        using var factory = CreateFactory(rabbitEnabled: true);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", CreateAdministratorToken());
+
+        var gateway = await client.PostAsJsonAsync("/api/v1/edge-gateways", new
+        {
+            edgeMac = "aa:bb:cc:dd:ee:01",
+            monitoringZoneId = 9
+        });
+        Assert.Equal(HttpStatusCode.Created, gateway.StatusCode);
+
+        var device = await client.PostAsJsonAsync("/api/v1/edge-gateways/AA:BB:CC:DD:EE:01/iot-devices", new
+        {
+            iotMac = "11:22:33:44:55:66",
+            plantationId = 27
+        });
+        Assert.Equal(HttpStatusCode.Created, device.StatusCode);
+
+        var registry = await client.GetFromJsonAsync<RegistryResponse>(
+            "/api/v1/edge-gateways/AA:BB:CC:DD:EE:01/registry");
+        Assert.NotNull(registry);
+        Assert.Equal("AA:BB:CC:DD:EE:01", registry.EdgeDeviceMac);
+        Assert.Equal("11:22:33:44:55:66", Assert.Single(registry.Registry).IotDeviceMac);
+
+        await using var connection = new NpgsqlConnection(_postgres.GetConnectionString());
+        await connection.OpenAsync();
+        var published = false;
+        for (var attempt = 0; attempt < 10 && !published; attempt++)
+        {
+            await using var command = new NpgsqlCommand(
+                "SELECT COUNT(*) FROM device.outbox_messages WHERE processed_on_utc IS NOT NULL",
+                connection);
+            published = Convert.ToInt64(await command.ExecuteScalarAsync()) == 2;
+            if (!published) await Task.Delay(TimeSpan.FromSeconds(1));
+        }
+        Assert.True(published, "The two Device outbox messages were not published within the retry window.");
+    }
+
+    [DockerRequiredFact]
+    [Trait("Category", "Integration")]
+    public async Task DuplicateGateway_ReturnsConflictAndKeepsSingleRow()
+    {
+        using var factory = CreateFactory(rabbitEnabled: false);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", CreateAdministratorToken());
+        var payload = new { edgeMac = "AA:BB:CC:DD:EE:09", monitoringZoneId = 1 };
+
+        Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync("/api/v1/edge-gateways", payload)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsJsonAsync("/api/v1/edge-gateways", payload)).StatusCode);
+    }
+
+    [DockerRequiredFact]
+    [Trait("Category", "Integration")]
+    public async Task RegisterGateway_WithoutJwt_ReturnsUnauthorized()
+    {
+        using var factory = CreateFactory(rabbitEnabled: false);
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/v1/edge-gateways", new
+        {
+            edgeMac = "AA:BB:CC:DD:EE:10",
+            monitoringZoneId = 1
+        });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    private WebApplicationFactory<Program> CreateFactory(bool rabbitEnabled) =>
+        new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        {
+            builder.UseEnvironment("Testing");
+            builder.UseSetting("ConnectionStrings:DeviceDatabase", _postgres.GetConnectionString());
+            builder.UseSetting("Jwt:Issuer", "smartpalm.identity.tests");
+            builder.UseSetting("Jwt:Audience", "smartpalm.clients.tests");
+            builder.UseSetting("Jwt:Key", JwtKey);
+            builder.UseSetting("RabbitMq:Enabled", rabbitEnabled.ToString());
+            builder.UseSetting("RabbitMq:Uri", _rabbitMq.GetConnectionString());
+        });
+
+    private static string CreateAdministratorToken()
+    {
+        var credentials = new SigningCredentials(
+            new SymmetricSecurityKey(Encoding.UTF8.GetBytes(JwtKey)), SecurityAlgorithms.HmacSha256);
+        var token = new JwtSecurityToken(
+            issuer: "smartpalm.identity.tests",
+            audience: "smartpalm.clients.tests",
+            claims:
+            [
+                new Claim("sub", "42"),
+                new Claim("sid", "42"),
+                new Claim("name", "integration-admin"),
+                new Claim("role", "Administrator")
+            ],
+            expires: DateTime.UtcNow.AddMinutes(10),
+            signingCredentials: credentials);
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+}
