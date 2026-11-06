@@ -40,6 +40,7 @@ public class DeviceApiContainerTests : IAsyncLifetime
         var gateway = await client.PostAsJsonAsync("/api/v1/edge-gateways", new
         {
             edgeMac = "aa:bb:cc:dd:ee:01",
+            ownerUserId = 42,
             monitoringZoneId = 9
         });
         Assert.Equal(HttpStatusCode.Created, gateway.StatusCode);
@@ -47,7 +48,9 @@ public class DeviceApiContainerTests : IAsyncLifetime
         var device = await client.PostAsJsonAsync("/api/v1/edge-gateways/AA:BB:CC:DD:EE:01/iot-devices", new
         {
             iotMac = "11:22:33:44:55:66",
-            plantationId = 27
+            ownerUserId = 42,
+            plantationId = 27,
+            sectorId = 88
         });
         Assert.Equal(HttpStatusCode.Created, device.StatusCode);
 
@@ -78,7 +81,7 @@ public class DeviceApiContainerTests : IAsyncLifetime
         using var factory = CreateFactory(rabbitEnabled: false);
         using var client = factory.CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", CreateAdministratorToken());
-        var payload = new { edgeMac = "AA:BB:CC:DD:EE:09", monitoringZoneId = 1 };
+        var payload = new { edgeMac = "AA:BB:CC:DD:EE:09", ownerUserId = 42, monitoringZoneId = 1 };
 
         Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync("/api/v1/edge-gateways", payload)).StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsJsonAsync("/api/v1/edge-gateways", payload)).StatusCode);
