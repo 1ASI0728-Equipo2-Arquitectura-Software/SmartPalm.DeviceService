@@ -89,6 +89,67 @@ public class DeviceApiContainerTests : IAsyncLifetime
 
     [DockerRequiredFact]
     [Trait("Category", "Integration")]
+    public async Task DeleteGatewayWithDevices_ReleasesMacForReuse()
+    {
+        using var factory = CreateFactory(rabbitEnabled: false);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", CreateAdministratorToken());
+
+        const string gatewayMac = "AA:BB:CC:DD:EE:11";
+        Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync("/api/v1/admin/edge-gateways", new
+        {
+            edgeMac = gatewayMac,
+            ownerUserId = 42,
+            monitoringZoneId = 1
+        })).StatusCode);
+        Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync(
+            $"/api/v1/admin/edge-gateways/{gatewayMac}/iot-devices", new
+            {
+                iotMac = "11:22:33:44:55:77",
+                ownerUserId = 42,
+                plantationId = 27,
+                sectorId = 88
+            })).StatusCode);
+
+        var deletion = await client.DeleteAsync($"/api/v1/admin/edge-gateways?mac={gatewayMac}");
+        Assert.Equal(HttpStatusCode.NoContent, deletion.StatusCode);
+
+        var reRegistration = await client.PostAsJsonAsync("/api/v1/admin/edge-gateways", new
+        {
+            edgeMac = gatewayMac,
+            ownerUserId = 84,
+            monitoringZoneId = 2
+        });
+        Assert.Equal(HttpStatusCode.Created, reRegistration.StatusCode);
+    }
+
+    [DockerRequiredFact]
+    [Trait("Category", "Integration")]
+    public async Task DeleteGatewayWithoutAdministratorRole_ReturnsUnauthorized()
+    {
+        using var factory = CreateFactory(rabbitEnabled: false);
+        using var client = factory.CreateClient();
+
+        var response = await client.DeleteAsync("/api/v1/admin/edge-gateways?mac=AA:BB:CC:DD:EE:12");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [DockerRequiredFact]
+    [Trait("Category", "Integration")]
+    public async Task DeleteMissingGateway_ReturnsNotFound()
+    {
+        using var factory = CreateFactory(rabbitEnabled: false);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", CreateAdministratorToken());
+
+        var response = await client.DeleteAsync("/api/v1/admin/edge-gateways?mac=AA:BB:CC:DD:EE:13");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [DockerRequiredFact]
+    [Trait("Category", "Integration")]
     public async Task RegisterGateway_WithoutJwt_ReturnsUnauthorized()
     {
         using var factory = CreateFactory(rabbitEnabled: false);

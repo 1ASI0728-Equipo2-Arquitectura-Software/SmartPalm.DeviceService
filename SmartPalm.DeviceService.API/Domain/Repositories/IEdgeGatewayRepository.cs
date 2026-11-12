@@ -7,4 +7,5 @@ public interface IEdgeGatewayRepository
     Task AddAsync(EdgeGateway gateway, CancellationToken cancellationToken);
     Task<EdgeGateway?> FindByMacAsync(string macAddress, CancellationToken cancellationToken, bool tracking = true);
     Task<IReadOnlyList<EdgeGateway>> ListAsync(CancellationToken cancellationToken);
+    void Remove(EdgeGateway gateway);
 }
