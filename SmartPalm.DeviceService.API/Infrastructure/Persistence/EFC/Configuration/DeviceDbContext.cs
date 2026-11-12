@@ -11,6 +11,7 @@ public class DeviceDbContext(DbContextOptions<DeviceDbContext> options)
     public DbSet<EdgeGateway> EdgeGateways => Set<EdgeGateway>();
     public DbSet<IotDevice> IotDevices => Set<IotDevice>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+    public DbSet<InboxMessage> InboxMessages => Set<InboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -58,6 +59,12 @@ public class DeviceDbContext(DbContextOptions<DeviceDbContext> options)
             entity.Property(value => value.Content).HasColumnType("jsonb").IsRequired();
             entity.Property(value => value.Error).HasMaxLength(2000);
             entity.HasIndex(value => new { value.ProcessedOnUtc, value.OccurredOnUtc });
+        });
+        modelBuilder.Entity<InboxMessage>(entity =>
+        {
+            entity.ToTable("inbox_messages");
+            entity.HasKey(value => value.Id);
+            entity.Property(value => value.EventType).HasMaxLength(200).IsRequired();
         });
     }
 

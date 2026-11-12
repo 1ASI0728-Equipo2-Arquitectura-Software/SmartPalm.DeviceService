@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using SmartPalm.DeviceService.Application.Abstractions;
 using SmartPalm.DeviceService.Application.Services;
+using SmartPalm.DeviceService.Application.EventHandlers;
 using SmartPalm.DeviceService.Domain.Repositories;
 using SmartPalm.DeviceService.Infrastructure.Configuration;
 using SmartPalm.DeviceService.Infrastructure.Messaging;
@@ -24,7 +25,9 @@ public static class DependencyInjection
         services.AddScoped<IIntegrationEventWriter, IntegrationEventWriter>();
         services.AddScoped<DeviceCommandService>();
         services.AddScoped<DeviceQueryService>();
+        services.AddScoped<UserDeletionEventHandler>();
         services.AddHostedService<OutboxPublisher>();
+        services.AddHostedService<UserDeletionConsumer>();
         return services;
     }
 }
