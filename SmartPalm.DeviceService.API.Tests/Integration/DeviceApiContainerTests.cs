@@ -58,7 +58,13 @@ public class DeviceApiContainerTests : IAsyncLifetime
             "/api/v1/edge-gateways/AA:BB:CC:DD:EE:01/registry");
         Assert.NotNull(registry);
         Assert.Equal("AA:BB:CC:DD:EE:01", registry.EdgeDeviceMac);
-        Assert.Equal("11:22:33:44:55:66", Assert.Single(registry.Registry).IotDeviceMac);
+        var registeredDevice = Assert.Single(registry.Registry);
+        Assert.Equal("11:22:33:44:55:66", registeredDevice.IotDeviceMac);
+        Assert.Equal(42, registeredDevice.OwnerUserId);
+        Assert.Equal(27, registeredDevice.PlantationId);
+        Assert.Equal(88, registeredDevice.SectorId);
+        Assert.False(registeredDevice.IsProvisioned);
+        Assert.True(registeredDevice.IsActive);
 
         await using var connection = new NpgsqlConnection(_postgres.GetConnectionString());
         await connection.OpenAsync();
@@ -72,6 +78,33 @@ public class DeviceApiContainerTests : IAsyncLifetime
             if (!published) await Task.Delay(TimeSpan.FromSeconds(1));
         }
         Assert.True(published, "The two Device outbox messages were not published within the retry window.");
+    }
+
+    [DockerRequiredFact]
+    [Trait("Category", "Integration")]
+    public async Task RegisterIotDevice_WithDifferentOwnerThanGateway_ReturnsUnauthorized()
+    {
+        using var factory = CreateFactory(rabbitEnabled: false);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", CreateAdministratorToken());
+
+        const string gatewayMac = "AA:BB:CC:DD:EE:02";
+        Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync("/api/v1/edge-gateways", new
+        {
+            edgeMac = gatewayMac,
+            ownerUserId = 42,
+            monitoringZoneId = 9
+        })).StatusCode);
+
+        var response = await client.PostAsJsonAsync($"/api/v1/edge-gateways/{gatewayMac}/iot-devices", new
+        {
+            iotMac = "11:22:33:44:55:67",
+            ownerUserId = 84,
+            plantationId = 27,
+            sectorId = 88
+        });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [DockerRequiredFact]

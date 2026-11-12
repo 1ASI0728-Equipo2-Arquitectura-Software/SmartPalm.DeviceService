@@ -36,7 +36,8 @@ public class DeviceCommandService(
                 gateway.MonitoringZoneId,
                 gateway.CreatedAt,
                 gateway.OwnerUserId,
-                gateway.CredentialHash));
+                gateway.CredentialHash,
+                gateway.IsActive));
             await unitOfWork.SaveChangesAsync(transactionToken);
             response = new GatewayRegistrationResponse(
                 gateway.MacAddress,
@@ -85,7 +86,8 @@ public class DeviceCommandService(
                 device.OwnerUserId,
                 device.SectorId,
                 device.BootstrapCredentialHash,
-                device.IsProvisioned));
+                device.IsProvisioned,
+                device.IsActive));
             await unitOfWork.SaveChangesAsync(transactionToken);
             response = new IotRegistrationResponse(
                 device.MacAddress,
