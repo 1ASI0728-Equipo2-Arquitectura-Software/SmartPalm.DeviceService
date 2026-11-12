@@ -131,6 +131,23 @@ public class DeviceCommandService(
         await unitOfWork.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task DeleteGatewayAsync(string gatewayMac, CancellationToken cancellationToken)
+    {
+        var normalizedMac = EdgeGateway.NormalizeMac(gatewayMac);
+
+        await unitOfWork.ExecuteAsync(async transactionToken =>
+        {
+            var gateway = await gateways.FindByMacAsync(normalizedMac, transactionToken, tracking: true)
+                ?? throw new KeyNotFoundException("Edge Device not found.");
+            var associatedDevices = await devices.ListByGatewayAsync(normalizedMac, transactionToken);
+
+            devices.RemoveRange(associatedDevices);
+            gateways.Remove(gateway);
+            await unitOfWork.SaveChangesAsync(transactionToken);
+            return true;
+        }, cancellationToken);
+    }
+
     private async Task<EdgeGateway> RequiredGatewayAsync(string mac, CancellationToken cancellationToken) =>
         await gateways.FindByMacAsync(EdgeGateway.NormalizeMac(mac), cancellationToken)
         ?? throw new KeyNotFoundException("Edge Device not found.");

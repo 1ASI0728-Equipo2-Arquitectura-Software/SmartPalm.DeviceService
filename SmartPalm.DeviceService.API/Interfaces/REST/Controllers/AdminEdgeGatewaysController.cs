@@ -28,6 +28,15 @@ public class AdminEdgeGatewaysController(
     public async Task<ActionResult<IReadOnlyList<ConnectivityStatusResponse>>> ListEdgeGateways(CancellationToken cancellationToken) =>
         Ok(await queries.HandleAsync(new GetAllEdgeGatewaysQuery(), cancellationToken));
 
+    [HttpDelete]
+    public async Task<IActionResult> DeleteEdgeGateway(
+        [FromQuery] string mac,
+        CancellationToken cancellationToken)
+    {
+        await commands.DeleteGatewayAsync(mac, cancellationToken);
+        return NoContent();
+    }
+
     [HttpGet("{gatewayMac}/devices")]
     public async Task<ActionResult<GatewayDevicesResponse>> ListGatewayDevices(
         string gatewayMac,
