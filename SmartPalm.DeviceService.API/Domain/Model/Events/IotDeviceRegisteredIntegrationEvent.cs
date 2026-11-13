@@ -8,4 +8,5 @@ public record IotDeviceRegisteredIntegrationEvent(
     long OwnerUserId = 0,
     long SectorId = 0,
     string BootstrapCredentialHash = "",
-    bool IsProvisioned = false);
+    bool IsProvisioned = false,
+    bool IsActive = true);

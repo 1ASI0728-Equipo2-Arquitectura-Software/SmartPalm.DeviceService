@@ -29,6 +29,7 @@ public class IotDevice
     // Compatibility overload for existing domain tests and old data import scripts.
     public IotDevice(string gatewayMacAddress, string macAddress, long plantationId, DateTime? createdAt = null)
     {
+        if (plantationId <= 0) throw new ArgumentOutOfRangeException(nameof(plantationId));
         GatewayMacAddress = EdgeGateway.NormalizeMac(gatewayMacAddress);
         MacAddress = EdgeGateway.NormalizeMac(macAddress);
         PlantationId = plantationId;

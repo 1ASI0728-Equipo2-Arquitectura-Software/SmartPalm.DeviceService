@@ -40,6 +40,7 @@ public class DeviceApiContainerTests : IAsyncLifetime
         var gateway = await client.PostAsJsonAsync("/api/v1/edge-gateways", new
         {
             edgeMac = "aa:bb:cc:dd:ee:01",
+            ownerUserId = 42,
             monitoringZoneId = 9
         });
         Assert.Equal(HttpStatusCode.Created, gateway.StatusCode);
@@ -47,7 +48,9 @@ public class DeviceApiContainerTests : IAsyncLifetime
         var device = await client.PostAsJsonAsync("/api/v1/edge-gateways/AA:BB:CC:DD:EE:01/iot-devices", new
         {
             iotMac = "11:22:33:44:55:66",
-            plantationId = 27
+            ownerUserId = 42,
+            plantationId = 27,
+            sectorId = 88
         });
         Assert.Equal(HttpStatusCode.Created, device.StatusCode);
 
@@ -55,7 +58,13 @@ public class DeviceApiContainerTests : IAsyncLifetime
             "/api/v1/edge-gateways/AA:BB:CC:DD:EE:01/registry");
         Assert.NotNull(registry);
         Assert.Equal("AA:BB:CC:DD:EE:01", registry.EdgeDeviceMac);
-        Assert.Equal("11:22:33:44:55:66", Assert.Single(registry.Registry).IotDeviceMac);
+        var registeredDevice = Assert.Single(registry.Registry);
+        Assert.Equal("11:22:33:44:55:66", registeredDevice.IotDeviceMac);
+        Assert.Equal(42, registeredDevice.OwnerUserId);
+        Assert.Equal(27, registeredDevice.PlantationId);
+        Assert.Equal(88, registeredDevice.SectorId);
+        Assert.False(registeredDevice.IsProvisioned);
+        Assert.True(registeredDevice.IsActive);
 
         await using var connection = new NpgsqlConnection(_postgres.GetConnectionString());
         await connection.OpenAsync();
@@ -73,15 +82,103 @@ public class DeviceApiContainerTests : IAsyncLifetime
 
     [DockerRequiredFact]
     [Trait("Category", "Integration")]
+    public async Task RegisterIotDevice_WithDifferentOwnerThanGateway_ReturnsUnauthorized()
+    {
+        using var factory = CreateFactory(rabbitEnabled: false);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", CreateAdministratorToken());
+
+        const string gatewayMac = "AA:BB:CC:DD:EE:02";
+        Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync("/api/v1/edge-gateways", new
+        {
+            edgeMac = gatewayMac,
+            ownerUserId = 42,
+            monitoringZoneId = 9
+        })).StatusCode);
+
+        var response = await client.PostAsJsonAsync($"/api/v1/edge-gateways/{gatewayMac}/iot-devices", new
+        {
+            iotMac = "11:22:33:44:55:67",
+            ownerUserId = 84,
+            plantationId = 27,
+            sectorId = 88
+        });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [DockerRequiredFact]
+    [Trait("Category", "Integration")]
     public async Task DuplicateGateway_ReturnsConflictAndKeepsSingleRow()
     {
         using var factory = CreateFactory(rabbitEnabled: false);
         using var client = factory.CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", CreateAdministratorToken());
-        var payload = new { edgeMac = "AA:BB:CC:DD:EE:09", monitoringZoneId = 1 };
+        var payload = new { edgeMac = "AA:BB:CC:DD:EE:09", ownerUserId = 42, monitoringZoneId = 1 };
 
         Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync("/api/v1/edge-gateways", payload)).StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsJsonAsync("/api/v1/edge-gateways", payload)).StatusCode);
+    }
+
+    [DockerRequiredFact]
+    [Trait("Category", "Integration")]
+    public async Task DeleteGatewayWithDevices_ReleasesMacForReuse()
+    {
+        using var factory = CreateFactory(rabbitEnabled: false);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", CreateAdministratorToken());
+
+        const string gatewayMac = "AA:BB:CC:DD:EE:11";
+        Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync("/api/v1/admin/edge-gateways", new
+        {
+            edgeMac = gatewayMac,
+            ownerUserId = 42,
+            monitoringZoneId = 1
+        })).StatusCode);
+        Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync(
+            $"/api/v1/admin/edge-gateways/{gatewayMac}/iot-devices", new
+            {
+                iotMac = "11:22:33:44:55:77",
+                ownerUserId = 42,
+                plantationId = 27,
+                sectorId = 88
+            })).StatusCode);
+
+        var deletion = await client.DeleteAsync($"/api/v1/admin/edge-gateways?mac={gatewayMac}");
+        Assert.Equal(HttpStatusCode.NoContent, deletion.StatusCode);
+
+        var reRegistration = await client.PostAsJsonAsync("/api/v1/admin/edge-gateways", new
+        {
+            edgeMac = gatewayMac,
+            ownerUserId = 84,
+            monitoringZoneId = 2
+        });
+        Assert.Equal(HttpStatusCode.Created, reRegistration.StatusCode);
+    }
+
+    [DockerRequiredFact]
+    [Trait("Category", "Integration")]
+    public async Task DeleteGatewayWithoutAdministratorRole_ReturnsUnauthorized()
+    {
+        using var factory = CreateFactory(rabbitEnabled: false);
+        using var client = factory.CreateClient();
+
+        var response = await client.DeleteAsync("/api/v1/admin/edge-gateways?mac=AA:BB:CC:DD:EE:12");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [DockerRequiredFact]
+    [Trait("Category", "Integration")]
+    public async Task DeleteMissingGateway_ReturnsNotFound()
+    {
+        using var factory = CreateFactory(rabbitEnabled: false);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", CreateAdministratorToken());
+
+        var response = await client.DeleteAsync("/api/v1/admin/edge-gateways?mac=AA:BB:CC:DD:EE:13");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [DockerRequiredFact]

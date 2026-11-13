@@ -5,4 +5,5 @@ public record EdgeGatewayRegisteredIntegrationEvent(
     long MonitoringZoneId,
     DateTime CreatedAt,
     long OwnerUserId = 0,
-    string CredentialHash = "");
+    string CredentialHash = "",
+    bool IsActive = true);

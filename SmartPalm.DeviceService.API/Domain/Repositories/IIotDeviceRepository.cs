@@ -8,4 +8,5 @@ public interface IIotDeviceRepository
     Task<IotDevice?> FindByMacAsync(string macAddress, CancellationToken cancellationToken);
     Task<IotDevice?> FindForUpdateAsync(string macAddress, CancellationToken cancellationToken);
     Task<IReadOnlyList<IotDevice>> ListByGatewayAsync(string gatewayMacAddress, CancellationToken cancellationToken);
+    void RemoveRange(IEnumerable<IotDevice> devices);
 }

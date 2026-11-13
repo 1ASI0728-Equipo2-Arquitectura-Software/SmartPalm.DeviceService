@@ -33,4 +33,6 @@ internal class IotDeviceRepository(DeviceDbContext context) : IIotDeviceReposito
             .OrderBy(value => value.MacAddress)
             .ToArrayAsync(cancellationToken);
     }
+
+    public void RemoveRange(IEnumerable<IotDevice> devices) => context.IotDevices.RemoveRange(devices);
 }

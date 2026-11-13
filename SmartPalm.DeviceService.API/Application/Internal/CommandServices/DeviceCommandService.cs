@@ -36,7 +36,8 @@ public class DeviceCommandService(
                 gateway.MonitoringZoneId,
                 gateway.CreatedAt,
                 gateway.OwnerUserId,
-                gateway.CredentialHash));
+                gateway.CredentialHash,
+                gateway.IsActive));
             await unitOfWork.SaveChangesAsync(transactionToken);
             response = new GatewayRegistrationResponse(
                 gateway.MacAddress,
@@ -85,7 +86,8 @@ public class DeviceCommandService(
                 device.OwnerUserId,
                 device.SectorId,
                 device.BootstrapCredentialHash,
-                device.IsProvisioned));
+                device.IsProvisioned,
+                device.IsActive));
             await unitOfWork.SaveChangesAsync(transactionToken);
             response = new IotRegistrationResponse(
                 device.MacAddress,
@@ -129,6 +131,23 @@ public class DeviceCommandService(
         var gateway = await RequiredGatewayAsync(command.GatewayMac, cancellationToken);
         gateway.RegisterSynchronization(command.OccurredAt);
         await unitOfWork.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task DeleteGatewayAsync(string gatewayMac, CancellationToken cancellationToken)
+    {
+        var normalizedMac = EdgeGateway.NormalizeMac(gatewayMac);
+
+        await unitOfWork.ExecuteAsync(async transactionToken =>
+        {
+            var gateway = await gateways.FindByMacAsync(normalizedMac, transactionToken, tracking: true)
+                ?? throw new KeyNotFoundException("Edge Device not found.");
+            var associatedDevices = await devices.ListByGatewayAsync(normalizedMac, transactionToken);
+
+            devices.RemoveRange(associatedDevices);
+            gateways.Remove(gateway);
+            await unitOfWork.SaveChangesAsync(transactionToken);
+            return true;
+        }, cancellationToken);
     }
 
     private async Task<EdgeGateway> RequiredGatewayAsync(string mac, CancellationToken cancellationToken) =>

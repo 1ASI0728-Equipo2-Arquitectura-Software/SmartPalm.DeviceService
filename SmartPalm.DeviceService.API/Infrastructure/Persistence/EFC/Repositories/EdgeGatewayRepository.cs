@@ -18,4 +18,6 @@ internal class EdgeGatewayRepository(DeviceDbContext context) : IEdgeGatewayRepo
 
     public async Task<IReadOnlyList<EdgeGateway>> ListAsync(CancellationToken cancellationToken) =>
         await context.EdgeGateways.AsNoTracking().OrderBy(value => value.MacAddress).ToArrayAsync(cancellationToken);
+
+    public void Remove(EdgeGateway gateway) => context.EdgeGateways.Remove(gateway);
 }
