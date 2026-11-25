@@ -31,6 +31,41 @@ de contenedor.
 
 La API queda en `http://localhost:5103`.
 
+## Despliegue con Coolify
+
+Para un despliegue mediante Docker Compose en Coolify, configurar el build pack como
+`Dockerfile` y usar `compose.coolify.yaml` como composición opcional. El contenedor
+publica el puerto interno `8080` y expone `/health/live` y `/health/ready`.
+
+Registrar las siguientes variables en Coolify como secretos o variables de ejecución;
+no colocar contraseñas reales en el repositorio:
+
+```text
+ASPNETCORE_ENVIRONMENT=Production
+ASPNETCORE_URLS=http://+:8080
+DEVICE_DB_HOST=<ip-privada-vultr-2>
+DEVICE_DB_PORT=5432
+DEVICE_DB_NAME=smartpalm_device
+DEVICE_DB_USERNAME=<usuario-database>
+DEVICE_DB_PASSWORD=<password-database>
+JWT_ISSUER=smartpalm.identity
+JWT_AUDIENCE=smartpalm.clients
+JWT_KEY=<misma-clave-de-identity-service-de-al-menos-32-caracteres>
+RABBITMQ_ENABLED=true
+RABBITMQ_URI=amqp://<usuario>:<password>@<ip-privada-vultr-2>:5672/
+RABBITMQ_EXCHANGE=smartpalm.events
+```
+
+La aplicación ejecuta las migraciones EF Core al iniciar. Coolify debe configurar
+`/health/ready` como health check y no debe publicar el puerto 8080 públicamente.
+El API Gateway es el único punto HTTP público.
+
+Ejemplo local de la composición de Coolify:
+
+```powershell
+docker compose --env-file .env -f compose.coolify.yaml up -d --build
+```
+
 ## Verificación
 
 ```powershell

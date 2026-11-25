@@ -1,0 +1,23 @@
+services:
+  device-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__DeviceDatabase: Host=${DEVICE_DB_HOST:-10.6.96.4};Port=${DEVICE_DB_PORT:-5432};Database=${DEVICE_DB_NAME:-smartpalm_device};Username=${DEVICE_DB_USERNAME};Password=${DEVICE_DB_PASSWORD}
+      Jwt__Issuer: ${JWT_ISSUER:-smartpalm.identity}
+      Jwt__Audience: ${JWT_AUDIENCE:-smartpalm.clients}
+      Jwt__Key: ${JWT_KEY}
+      RabbitMq__Enabled: ${RABBITMQ_ENABLED:-true}
+      RabbitMq__Uri: ${RABBITMQ_URI}
+      RabbitMq__Exchange: ${RABBITMQ_EXCHANGE:-smartpalm.events}
+    ports:
+      - "${DEVICE_API_PORT:-8080}:8080"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/health/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12

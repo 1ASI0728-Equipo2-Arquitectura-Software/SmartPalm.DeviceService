@@ -62,6 +62,7 @@ app.UseExceptionHandler(exceptionApp => exceptionApp.Run(async context =>
     {
         KeyNotFoundException => StatusCodes.Status404NotFound,
         ArgumentException => StatusCodes.Status400BadRequest,
+        UnauthorizedAccessException => StatusCodes.Status401Unauthorized,
         InvalidOperationException => StatusCodes.Status409Conflict,
         _ => StatusCodes.Status500InternalServerError
     };
